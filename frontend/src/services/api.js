@@ -1,8 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-console.log('API URL:', API_URL); // Debug log
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -11,29 +9,28 @@ const api = axios.create({
   },
 });
 
-// Add token to requests
+// Attach JWT to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  console.log('Request interceptor - Token exists:', !!token); // Debug log
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Handle auth errors
+// On 401, clear credentials and bounce to /login — unless we're already there,
+// otherwise the login page 401-ing would trigger an infinite redirect loop.
 api.interceptors.response.use(
-  (response) => {
-    console.log('Response success:', response.config.url); // Debug log
-    return response;
-  },
+  (response) => response,
   (error) => {
-    console.error('Response error:', error.response?.status, error.config?.url); // Debug log
     if (error.response?.status === 401) {
-      console.log('401 Unauthorized - Logging out');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      const onLogin = typeof window !== 'undefined'
+        && window.location.pathname.startsWith('/login');
+      if (!onLogin) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.replace('/login');
+      }
     }
     return Promise.reject(error);
   }
