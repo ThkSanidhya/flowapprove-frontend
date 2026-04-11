@@ -4,6 +4,7 @@ import api from '../../services/api';
 import { documentService } from '../../services/documentService';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+import DocumentViewer from './DocumentViewer';
 
 export default function EnhancedDocumentDetail() {
   const { id } = useParams();
@@ -251,24 +252,14 @@ export default function EnhancedDocumentDetail() {
         <div className="grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
           <div className="card">
             <h3>Document Preview</h3>
-            {fileUrl && (
-              <div style={{ marginTop: '15px' }}>
-                {document.file_type?.includes('image') ? (
-                  <img src={fileUrl} alt={document.title} style={{ maxWidth: '100%', height: 'auto', border: '1px solid #ddd', borderRadius: '4px' }} />
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '48px', marginBottom: '15px' }}>📄</div>
-                    <p><strong>{document.file_name}</strong></p>
-                    <p style={{ color: '#666', marginBottom: '20px' }}>Size: {(document.file_size / 1024).toFixed(2)} KB<br />Type: {document.file_type}</p>
-                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                      <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">📖 Open Document in New Tab</a>
-                      <a href={fileUrl} download className="btn btn-secondary">💾 Download</a>
-                    </div>
-                    <p style={{ marginTop: '15px', fontSize: '12px', color: '#999' }}>Preview not available. Click "Open Document" to view.</p>
-                  </div>
-                )}
-              </div>
-            )}
+            <div style={{ marginTop: '15px' }}>
+              <DocumentViewer
+                fileUrl={fileUrl}
+                fileName={document.file_name}
+                fileType={document.file_type}
+                fileSize={document.file_size}
+              />
+            </div>
           </div>
 
           {/* Actions Sidebar */}
