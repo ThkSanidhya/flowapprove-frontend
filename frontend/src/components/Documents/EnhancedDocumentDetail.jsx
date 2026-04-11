@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../../services/api';
+import { documentService } from '../../services/documentService';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -15,9 +16,14 @@ export default function EnhancedDocumentDetail() {
   const [pageNumber, setPageNumber] = useState('');
   const [approvalComment, setApprovalComment] = useState('');
   const [sendBackReason, setSendBackReason] = useState('');
+  const [sendBackTarget, setSendBackTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('document');
   const [showSendBackModal, setShowSendBackModal] = useState(false);
-  const [previousApprover, setPreviousApprover] = useState(null);
+  const [showRecallModal, setShowRecallModal] = useState(false);
+  const [recallReason, setRecallReason] = useState('');
+  const [versionFile, setVersionFile] = useState(null);
+  const [versionNote, setVersionNote] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -28,17 +34,17 @@ export default function EnhancedDocumentDetail() {
     loadDocument();
   }, [id]);
 
+  // When the send-back modal opens, default the target to the immediately previous step
+  useEffect(() => {
+    if (showSendBackModal && document?.currentStep) {
+      setSendBackTarget(Math.max(1, document.currentStep - 1));
+    }
+  }, [showSendBackModal, document?.currentStep]);
+
   const loadDocument = async () => {
     try {
       const response = await api.get(`/documents/${id}`);
       setDocument(response.data);
-      if (response.data.timeline && response.data.currentStep > 1) {
-        const prevStep = response.data.currentStep - 1;
-        const prevApprover = response.data.timeline.find(s => s.stepOrder === prevStep);
-        setPreviousApprover(prevApprover);
-      } else if (response.data.creator) {
-        setPreviousApprover({ user: response.data.creator, stepOrder: 1 });
-      }
     } catch (error) {
       toast.error('Failed to load document');
       navigate('/documents');
@@ -64,7 +70,7 @@ export default function EnhancedDocumentDetail() {
       return;
     }
     try {
-      await api.post(`/documents/${id}/sendback`, { reason: sendBackReason, comment: approvalComment });
+      await documentService.sendBack(id, sendBackReason, sendBackTarget);
       toast.success('Document sent back for revision');
       setShowSendBackModal(false);
       setSendBackReason('');
@@ -72,6 +78,55 @@ export default function EnhancedDocumentDetail() {
       loadDocument();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to send back');
+    }
+  };
+
+  const handleReject = async () => {
+    if (!window.confirm('Reject this document? The creator will need to upload a revised version.')) return;
+    try {
+      await documentService.reject(id, approvalComment);
+      toast.success('Document rejected');
+      loadDocument();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Reject failed');
+    }
+  };
+
+  const handleRecall = async () => {
+    if (!recallReason) {
+      toast.error('Please provide a reason');
+      return;
+    }
+    try {
+      await documentService.recall(id, recallReason);
+      toast.success('Document recalled');
+      setShowRecallModal(false);
+      setRecallReason('');
+      loadDocument();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Recall failed');
+    }
+  };
+
+  const handleUploadVersion = async () => {
+    if (!versionFile) {
+      toast.error('Choose a file first');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', versionFile);
+    if (versionNote) formData.append('version_note', versionNote);
+    setUploading(true);
+    try {
+      await documentService.uploadVersion(id, formData);
+      toast.success('New version uploaded');
+      setVersionFile(null);
+      setVersionNote('');
+      loadDocument();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -95,29 +150,23 @@ export default function EnhancedDocumentDetail() {
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'APPROVED': return '#28a745';
       case 'REJECTED': return '#dc3545';
+      case 'CANCELLED': return '#6c757d';
       case 'PENDING': return '#ffc107';
       default: return '#6c757d';
     }
   };
 
   const getStatusText = (status) => {
-    switch(status) {
+    switch (status) {
       case 'APPROVED': return 'Approved';
       case 'REJECTED': return 'Rejected';
+      case 'CANCELLED': return 'Cancelled';
       case 'PENDING': return 'Pending';
       default: return status;
     }
-  };
-
-  const getSendBackReceiver = () => {
-    if (document?.currentStep > 1) {
-      const prevStep = document.timeline?.find(s => s.stepOrder === document.currentStep - 1);
-      return prevStep?.user?.name || 'Previous Approver';
-    }
-    return document?.creator?.name || 'Document Creator';
   };
 
   const getFileUrl = (url) => {
@@ -132,12 +181,14 @@ export default function EnhancedDocumentDetail() {
 
   const fileUrl = getFileUrl(document.file_url);
 
-  // Helper to format datetime
   const formatDateTime = (date) => new Date(date).toLocaleString();
-
-  // Group history entries by step? We'll just render a clean timeline.
-  // For better visual, we'll show each action with an arrow indicator.
   const historyEntries = document.history || [];
+  const sendbackType = document.sendbackType || 'PREVIOUS_ONLY';
+
+  // Steps the approver may send back to (1..current_step-1)
+  const previousSteps = (document.timeline || []).filter(
+    (s) => s.stepOrder < document.currentStep
+  );
 
   return (
     <div>
@@ -208,7 +259,7 @@ export default function EnhancedDocumentDetail() {
                   <div style={{ textAlign: 'center', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
                     <div style={{ fontSize: '48px', marginBottom: '15px' }}>📄</div>
                     <p><strong>{document.file_name}</strong></p>
-                    <p style={{ color: '#666', marginBottom: '20px' }}>Size: {(document.file_size / 1024).toFixed(2)} KB<br/>Type: {document.file_type}</p>
+                    <p style={{ color: '#666', marginBottom: '20px' }}>Size: {(document.file_size / 1024).toFixed(2)} KB<br />Type: {document.file_type}</p>
                     <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                       <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">📖 Open Document in New Tab</a>
                       <a href={fileUrl} download className="btn btn-secondary">💾 Download</a>
@@ -229,12 +280,29 @@ export default function EnhancedDocumentDetail() {
                   <label>Comment (Optional)</label>
                   <textarea value={approvalComment} onChange={(e) => setApprovalComment(e.target.value)} rows="3" placeholder="Add approval comment..." />
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={handleApprove} className="btn btn-success" style={{ flex: 1, padding: '12px' }}>✅ Approve</button>
-                  <button onClick={() => setShowSendBackModal(true)} className="btn btn-danger" style={{ flex: 1, padding: '12px' }}>↩️ Send Back</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button onClick={handleApprove} className="btn btn-success" style={{ padding: '12px' }}>✅ Approve</button>
+                  {document.currentStep > 1 && (
+                    <button onClick={() => setShowSendBackModal(true)} className="btn btn-secondary" style={{ padding: '12px' }}>↩️ Send Back</button>
+                  )}
+                  <button onClick={handleReject} className="btn btn-danger" style={{ padding: '12px' }}>❌ Reject</button>
                 </div>
               </div>
             )}
+
+            {/* Recall card — only creator, only PENDING */}
+            {document.canRecall && (
+              <div className="card" style={{ border: '2px solid #6c757d' }}>
+                <h3>Recall Document</h3>
+                <p style={{ color: '#666', fontSize: '13px', marginBottom: '12px' }}>
+                  Withdraw this document from the approval flow. Its status will become <strong>Cancelled</strong>.
+                </p>
+                <button onClick={() => setShowRecallModal(true)} className="btn btn-secondary" style={{ width: '100%' }}>
+                  Recall Document
+                </button>
+              </div>
+            )}
+
             <div className="card">
               <h3>Add Comment</h3>
               <div className="form-group">
@@ -250,18 +318,19 @@ export default function EnhancedDocumentDetail() {
             <div className="card">
               <h3>Document Info</h3>
               <div style={{ fontSize: '14px' }}>
-                <div><strong>Uploaded by:</strong> {document.creator?.name}</div>
+                <div><strong>Uploaded by:</strong> {document.creator?.name || document.created_by_name}</div>
                 <div><strong>Uploaded on:</strong> {formatDateTime(document.created_at)}</div>
                 <div><strong>File Size:</strong> {(document.file_size / 1024).toFixed(2)} KB</div>
-                {document.workflow && <div><strong>Workflow:</strong> {document.workflow.name}</div>}
-                <div><strong>Current Step:</strong> {document.current_step}/{document.workflow?.steps?.length || 1}</div>
+                {document.workflow_name && <div><strong>Workflow:</strong> {document.workflow_name}</div>}
+                <div><strong>Current Step:</strong> {document.current_step}/{document.timeline?.length || 1}</div>
+                <div><strong>Send-back policy:</strong> {sendbackType === 'ANY_PREVIOUS' ? 'Any previous step' : 'Previous step only'}</div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Workflow Timeline Tab (static steps) */}
+      {/* Workflow Timeline Tab */}
       {activeTab === 'timeline' && (
         <div className="card">
           <h3>Workflow Steps</h3>
@@ -293,7 +362,7 @@ export default function EnhancedDocumentDetail() {
         </div>
       )}
 
-      {/* ACTIVITY TIMELINE TAB - Enhanced with arrows and visual flow */}
+      {/* Activity Timeline Tab */}
       {activeTab === 'activity' && (
         <div className="card">
           <h3>Activity Timeline</h3>
@@ -301,69 +370,47 @@ export default function EnhancedDocumentDetail() {
             <p style={{ textAlign: 'center', color: '#666', padding: '40px' }}>No activity yet</p>
           ) : (
             <div style={{ position: 'relative', paddingLeft: '20px' }}>
-              {historyEntries.map((entry, idx) => (
-                <div key={entry.id} style={{ position: 'relative', marginBottom: '30px' }}>
-                  {/* Arrow connector (except last) */}
-                  {idx < historyEntries.length - 1 && (
-                    <div style={{
-                      position: 'absolute',
-                      left: '8px',
-                      top: '28px',
-                      width: '2px',
-                      height: 'calc(100% - 10px)',
-                      backgroundColor: '#ddd',
-                      zIndex: 0
-                    }} />
-                  )}
-                  {/* Timeline node */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px' }}>
-                    <div style={{
-                      width: '20px', height: '20px', borderRadius: '50%',
-                      backgroundColor: entry.action === 'APPROVED' ? '#28a745' : entry.action === 'REJECTED' || entry.action === 'SENT_BACK' ? '#dc3545' : '#007bff',
-                      border: '2px solid white', boxShadow: '0 0 0 2px #ddd',
-                      marginTop: '4px', flexShrink: 0, zIndex: 1
-                    }} />
-                    <div style={{ flex: 1, backgroundColor: '#f9f9f9', borderRadius: '8px', padding: '12px', borderLeft: `4px solid ${entry.action === 'APPROVED' ? '#28a745' : entry.action === 'REJECTED' || entry.action === 'SENT_BACK' ? '#dc3545' : '#007bff'}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: '8px' }}>
-                        <strong style={{ fontSize: '15px' }}>{entry.user?.name}</strong>
-                        <span style={{ fontSize: '12px', color: '#999' }}>{formatDateTime(entry.createdAt)}</span>
+              {historyEntries.map((entry, idx) => {
+                const isPositive = entry.action === 'APPROVED';
+                const isNegative = entry.action === 'REJECTED' || entry.action === 'SENT_BACK' || entry.action === 'RECALLED';
+                const color = isPositive ? '#28a745' : isNegative ? '#dc3545' : '#007bff';
+                return (
+                  <div key={entry.id} style={{ position: 'relative', marginBottom: '30px' }}>
+                    {idx < historyEntries.length - 1 && (
+                      <div style={{ position: 'absolute', left: '8px', top: '28px', width: '2px', height: 'calc(100% - 10px)', backgroundColor: '#ddd', zIndex: 0 }} />
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px' }}>
+                      <div style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: color, border: '2px solid white', boxShadow: '0 0 0 2px #ddd', marginTop: '4px', flexShrink: 0, zIndex: 1 }} />
+                      <div style={{ flex: 1, backgroundColor: '#f9f9f9', borderRadius: '8px', padding: '12px', borderLeft: `4px solid ${color}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: '8px' }}>
+                          <strong style={{ fontSize: '15px' }}>{entry.user?.name}</strong>
+                          <span style={{ fontSize: '12px', color: '#999' }}>{formatDateTime(entry.createdAt)}</span>
+                        </div>
+                        <div style={{ marginBottom: '8px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '500', backgroundColor: isPositive ? '#d4edda' : isNegative ? '#f8d7da' : '#cce5ff', color: isPositive ? '#155724' : isNegative ? '#721c24' : '#004085' }}>
+                            {entry.action.replace('_', ' ')}
+                          </span>
+                        </div>
+                        {entry.comment && <p style={{ color: '#555', marginTop: '6px', fontSize: '13px', fontStyle: 'italic' }}>“{entry.comment}”</p>}
                       </div>
-                      <div style={{ marginBottom: '8px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '11px',
-                          fontWeight: '500',
-                          backgroundColor: entry.action === 'APPROVED' ? '#d4edda' : entry.action === 'REJECTED' || entry.action === 'SENT_BACK' ? '#f8d7da' : '#cce5ff',
-                          color: entry.action === 'APPROVED' ? '#155724' : entry.action === 'REJECTED' || entry.action === 'SENT_BACK' ? '#721c24' : '#004085'
-                        }}>
-                          {entry.action.replace('_', ' ')}
-                        </span>
-                      </div>
-                      {entry.comment && <p style={{ color: '#555', marginTop: '6px', fontSize: '13px', fontStyle: 'italic' }}>“{entry.comment}”</p>}
-                      {/* Optional: show step number if present in comment */}
-                      {entry.comment && entry.comment.includes('Step') && (
-                        <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>📌 {entry.comment.split(':')[0]}</div>
-                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* Comments Tab (kept as is) */}
+      {/* Comments Tab */}
       {activeTab === 'comments' && (
         <div className="card">
           <h3>All Comments</h3>
           {document.comments?.length === 0 ? (
             <p style={{ textAlign: 'center', color: '#666', padding: '40px' }}>No comments yet</p>
           ) : (
-            document.comments.map((c) => (
-              <div key={c.id} style={{ padding: '15px', borderBottom: '1px solid #eee', backgroundColor: c.userId === user?.id ? '#f8f9fa' : 'white' }}>
+            document.comments?.map((c) => (
+              <div key={c.id} style={{ padding: '15px', borderBottom: '1px solid #eee' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <strong>{c.user?.name}</strong>
                   <span style={{ fontSize: '12px', color: '#999' }}>{formatDateTime(c.createdAt)}</span>
@@ -380,7 +427,41 @@ export default function EnhancedDocumentDetail() {
       {activeTab === 'versions' && (
         <div className="card">
           <h3>Document Versions</h3>
-          {document.versions?.length === 0 ? (
+
+          {/* Upload-new-version panel — visible to whoever the backend authorized */}
+          {document.canUploadVersion && (
+            <div style={{
+              marginTop: '15px',
+              marginBottom: '20px',
+              padding: '20px',
+              border: '2px dashed #0066cc',
+              borderRadius: '8px',
+              backgroundColor: '#f0f8ff'
+            }}>
+              <h4 style={{ marginTop: 0 }}>📤 Upload a New Version</h4>
+              <p style={{ color: '#666', fontSize: '13px', marginBottom: '12px' }}>
+                {document.status === 'REJECTED'
+                  ? 'This document was rejected. Upload a revised file to restart the workflow from step 1.'
+                  : 'This document was sent back to you. Upload a revised file (the workflow will resume from your step).'}
+              </p>
+              <div className="form-group">
+                <input type="file" onChange={(e) => setVersionFile(e.target.files?.[0] || null)} />
+              </div>
+              <div className="form-group">
+                <textarea
+                  rows="2"
+                  placeholder="What changed? (optional)"
+                  value={versionNote}
+                  onChange={(e) => setVersionNote(e.target.value)}
+                />
+              </div>
+              <button onClick={handleUploadVersion} className="btn btn-primary" disabled={!versionFile || uploading}>
+                {uploading ? 'Uploading…' : 'Upload New Version'}
+              </button>
+            </div>
+          )}
+
+          {(!document.versions || document.versions.length === 0) ? (
             <p style={{ textAlign: 'center', color: '#666', padding: '40px' }}>No previous versions</p>
           ) : (
             document.versions.map((v) => (
@@ -396,7 +477,7 @@ export default function EnhancedDocumentDetail() {
                   <div>Uploaded by: {v.uploadedBy?.name}</div>
                 </div>
                 <div style={{ marginTop: '10px' }}>
-                  <a href={getFileUrl(v.file_url)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: '12px' }}>Download Version {v.versionNumber}</a>
+                  <a href={getFileUrl(v.fileUrl)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: '12px' }}>Download Version {v.versionNumber}</a>
                 </div>
               </div>
             ))
@@ -409,21 +490,69 @@ export default function EnhancedDocumentDetail() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="card" style={{ width: '500px', maxWidth: '90%' }}>
             <h2>Send Back Document</h2>
-            <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fff3cd', borderRadius: '8px', borderLeft: '4px solid #ffc107' }}>
-              <strong>ℹ️ This document will be sent back to:</strong>
-              <div style={{ marginTop: '5px' }}>{getSendBackReceiver()}</div>
-            </div>
+
+            {/* Step selector */}
+            {sendbackType === 'ANY_PREVIOUS' && previousSteps.length > 1 ? (
+              <div className="form-group">
+                <label>Send back to step *</label>
+                <select
+                  value={sendBackTarget ?? ''}
+                  onChange={(e) => setSendBackTarget(parseInt(e.target.value, 10))}
+                >
+                  {previousSteps.map((s) => (
+                    <option key={s.stepOrder} value={s.stepOrder}>
+                      Step {s.stepOrder} — {s.user?.name}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: '#666' }}>Everything from the chosen step onward will be reset to pending.</small>
+              </div>
+            ) : (
+              <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fff3cd', borderRadius: '8px', borderLeft: '4px solid #ffc107' }}>
+                <strong>ℹ️ Will be sent back to step {Math.max(1, (document.currentStep || 1) - 1)}</strong>
+                {previousSteps.length > 0 && (
+                  <div style={{ marginTop: '5px' }}>
+                    {previousSteps[previousSteps.length - 1]?.user?.name}
+                  </div>
+                )}
+                {sendbackType === 'PREVIOUS_ONLY' && document.currentStep > 2 && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#856404' }}>
+                    This workflow only allows sending back to the immediately previous step.
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="form-group">
               <label>Reason *</label>
               <textarea value={sendBackReason} onChange={(e) => setSendBackReason(e.target.value)} rows="4" placeholder="Explain why this document needs revision..." required />
             </div>
-            <div className="form-group">
-              <label>Additional Comment (Optional)</label>
-              <textarea value={approvalComment} onChange={(e) => setApprovalComment(e.target.value)} rows="3" placeholder="Add any additional feedback..." />
-            </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button onClick={handleSendBack} className="btn btn-danger">Send Back</button>
-              <button onClick={() => { setShowSendBackModal(false); setSendBackReason(''); setApprovalComment(''); }} className="btn btn-secondary">Cancel</button>
+              <button onClick={() => { setShowSendBackModal(false); setSendBackReason(''); }} className="btn btn-secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recall Modal */}
+      {showRecallModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: '500px', maxWidth: '90%' }}>
+            <h2>Recall Document</h2>
+            <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#e2e3e5', borderRadius: '8px', borderLeft: '4px solid #6c757d' }}>
+              <strong>This will cancel the document</strong>
+              <div style={{ marginTop: '5px', fontSize: '13px', color: '#555' }}>
+                All pending approvals will be cleared and the document status will become Cancelled. This cannot be undone.
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Reason *</label>
+              <textarea value={recallReason} onChange={(e) => setRecallReason(e.target.value)} rows="3" placeholder="Why are you recalling this document?" required />
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={handleRecall} className="btn btn-danger">Confirm Recall</button>
+              <button onClick={() => { setShowRecallModal(false); setRecallReason(''); }} className="btn btn-secondary">Cancel</button>
             </div>
           </div>
         </div>

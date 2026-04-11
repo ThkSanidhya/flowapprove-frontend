@@ -11,6 +11,7 @@ export default function WorkflowForm() {
   const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
+    sendbackType: 'PREVIOUS_ONLY',
     steps: [{ userId: '', order: 1 }]
   });
 
@@ -38,8 +39,9 @@ export default function WorkflowForm() {
       const data = await workflowService.getById(id);
       setFormData({
         name: data.name,
+        sendbackType: data.sendback_type || data.sendbackType || 'PREVIOUS_ONLY',
         steps: data.steps.map(step => ({
-          userId: step.userId,
+          userId: step.user || step.userId,
           order: step.order
         }))
       });
@@ -123,6 +125,21 @@ export default function WorkflowForm() {
             placeholder="e.g., Invoice Approval, Document Review"
             required
           />
+        </div>
+
+        <div className="form-group">
+          <label>Send-back Policy</label>
+          <select
+            value={formData.sendbackType}
+            onChange={(e) => setFormData({ ...formData, sendbackType: e.target.value })}
+          >
+            <option value="PREVIOUS_ONLY">Previous step only (strict)</option>
+            <option value="ANY_PREVIOUS">Any previous step (flexible)</option>
+          </select>
+          <small style={{ color: '#666', display: 'block', marginTop: '4px' }}>
+            Controls whether an approver can jump a document back to any earlier step
+            or only the immediately preceding one.
+          </small>
         </div>
 
         <div style={{ marginTop: '20px', marginBottom: '20px' }}>
