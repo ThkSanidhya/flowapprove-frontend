@@ -45,7 +45,7 @@ export default function EnhancedDocumentDetail() {
     try {
       const response = await api.get(`/documents/${id}`);
       setDocument(response.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load document');
       navigate('/documents');
     } finally {
@@ -136,16 +136,16 @@ export default function EnhancedDocumentDetail() {
       return;
     }
     try {
-      await api.post(`/documents/${id}/comments/reference`, {
+      await api.post(`/documents/${id}/comments`, {
         comment,
-        pageNumber: pageNumber ? parseInt(pageNumber) : null
+        pageNumber: pageNumber ? parseInt(pageNumber, 10) : null,
       });
       toast.success('Comment added');
       setComment('');
       setPageNumber('');
       loadDocument();
     } catch (error) {
-      toast.error('Failed to add comment');
+      toast.error(error.response?.data?.error || 'Failed to add comment');
     }
   };
 
@@ -318,7 +318,7 @@ export default function EnhancedDocumentDetail() {
             <div className="card">
               <h3>Document Info</h3>
               <div style={{ fontSize: '14px' }}>
-                <div><strong>Uploaded by:</strong> {document.creator?.name || document.created_by_name}</div>
+                <div><strong>Uploaded by:</strong> {document.created_by_name || document.creator?.name}</div>
                 <div><strong>Uploaded on:</strong> {formatDateTime(document.created_at)}</div>
                 <div><strong>File Size:</strong> {(document.file_size / 1024).toFixed(2)} KB</div>
                 {document.workflow_name && <div><strong>Workflow:</strong> {document.workflow_name}</div>}

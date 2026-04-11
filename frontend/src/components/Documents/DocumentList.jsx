@@ -15,7 +15,7 @@ export default function DocumentList() {
     try {
       const data = await documentService.getAll();
       setDocuments(data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load documents');
     } finally {
       setLoading(false);
@@ -23,10 +23,11 @@ export default function DocumentList() {
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'PENDING': return '#ffc107';
       case 'APPROVED': return '#28a745';
       case 'REJECTED': return '#dc3545';
+      case 'CANCELLED': return '#6c757d';
       default: return '#6c757d';
     }
   };
@@ -82,10 +83,10 @@ export default function DocumentList() {
               </p>
               
               <div style={{ fontSize: '12px', color: '#999', marginTop: '10px' }}>
-                <div>Uploaded by: {doc.creator?.name}</div>
-                <div>Date: {new Date(doc.createdAt).toLocaleDateString()}</div>
-                {doc.workflow && <div>Workflow: {doc.workflow.name}</div>}
-                <div>Step: {doc.currentStep}/{doc.workflow?.steps?.length || 1}</div>
+                <div>Uploaded by: {doc.creator?.name || doc.created_by_name}</div>
+                <div>Date: {new Date(doc.created_at).toLocaleDateString()}</div>
+                {doc.workflow_name && <div>Workflow: {doc.workflow_name}</div>}
+                <div>Step: {doc.current_step}</div>
               </div>
             </Link>
           ))}

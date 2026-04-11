@@ -5,14 +5,15 @@ import toast from 'react-hot-toast';
 import DocumentTable from './DocumentTable';
 
 export default function UserDashboard() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState({
     totalDocuments: 0,
     inProgress: 0,
     pendingMyAction: 0,
     approvedByMe: 0,
     sentBack: 0,
-    completed: 0
+    completed: 0,
+    cancelled: 0,
   });
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState(null);
@@ -25,7 +26,7 @@ export default function UserDashboard() {
     try {
       const response = await api.get('/dashboard/stats');
       setStats(response.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load dashboard stats');
     } finally {
       setLoading(false);
@@ -81,7 +82,15 @@ export default function UserDashboard() {
       bgColor: '#d1f2eb',
       icon: '🎉',
       filter: 'APPROVED'
-    }
+    },
+    {
+      label: 'Cancelled',
+      value: stats.cancelled,
+      color: '#6c757d',
+      bgColor: '#e9ecef',
+      icon: '🚫',
+      filter: 'CANCELLED'
+    },
   ];
 
   const handleCardClick = (filter) => {

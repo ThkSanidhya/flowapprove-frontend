@@ -17,18 +17,15 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
-    console.log('Login attempt with:', formData); // Debug log
-    
+
     try {
-      const result = await login(formData.email, formData.password);
-      console.log('Login result:', result); // Debug log
+      await login(formData.email, formData.password);
       toast.success('Login successful!');
       navigate('/dashboard');
-    } catch (error) {
-      console.error('Login error:', error); // Debug log
-      setError(error.response?.data?.error || 'Login failed');
-      toast.error(error.response?.data?.error || 'Login failed');
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Login failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

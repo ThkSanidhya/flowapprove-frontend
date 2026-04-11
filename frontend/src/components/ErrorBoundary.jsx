@@ -16,7 +16,6 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     // In prod you'd ship this to Sentry. For now, console is fine.
-    // eslint-disable-next-line no-console
     console.error('ErrorBoundary caught:', error, info?.componentStack);
   }
 

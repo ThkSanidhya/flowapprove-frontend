@@ -23,8 +23,8 @@ export default function DocumentUpload() {
     try {
       const data = await workflowService.getAll();
       setWorkflows(data);
-    } catch (error) {
-      console.error('Failed to load workflows');
+    } catch {
+      toast.error('Failed to load workflows');
     }
   };
 
@@ -37,19 +37,11 @@ export default function DocumentUpload() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    console.log('Form data before upload:', {
-      title: formData.title,
-      description: formData.description,
-      workflowId: formData.workflowId,
-      file: formData.file?.name
-    });
-    
+
     if (!formData.file) {
       toast.error('Please select a file');
       return;
     }
-
     if (!formData.title) {
       toast.error('Please enter a title');
       return;
@@ -61,26 +53,14 @@ export default function DocumentUpload() {
       uploadData.append('file', formData.file);
       uploadData.append('title', formData.title);
       uploadData.append('description', formData.description);
-      
-      // IMPORTANT: Send workflowId as string if selected
-      if (formData.workflowId && formData.workflowId !== '') {
+      if (formData.workflowId) {
         uploadData.append('workflowId', String(formData.workflowId));
-        console.log('✅ Appending workflowId:', formData.workflowId);
-      } else {
-        console.log('⚠️ No workflow selected');
-      }
-      
-      // Debug: Log all FormData contents
-      console.log('=== FormData Contents ===');
-      for (let pair of uploadData.entries()) {
-        console.log(pair[0], '=', pair[1]);
       }
 
       await documentService.upload(uploadData);
       toast.success('Document uploaded successfully!');
       navigate('/documents');
     } catch (error) {
-      console.error('Upload error:', error);
       toast.error(error.response?.data?.error || 'Upload failed');
     } finally {
       setLoading(false);
@@ -117,10 +97,7 @@ export default function DocumentUpload() {
           <label>Workflow (Optional)</label>
           <select
             value={formData.workflowId}
-            onChange={(e) => {
-              console.log('Workflow selected:', e.target.value);
-              setFormData({ ...formData, workflowId: e.target.value });
-            }}
+            onChange={(e) => setFormData({ ...formData, workflowId: e.target.value })}
           >
             <option value="">No workflow (direct approval)</option>
             {workflows.map(workflow => (
@@ -143,7 +120,7 @@ export default function DocumentUpload() {
             <input
               type="file"
               onChange={handleFileChange}
-              accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               style={{ marginBottom: '10px' }}
             />
             {formData.file && (
@@ -155,7 +132,7 @@ export default function DocumentUpload() {
               </div>
             )}
             <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-              Supported: PDF, DOC, DOCX, TXT, Images (Max 10MB)
+              Supported: PDF, DOC, DOCX, JPG, PNG (Max 50 MB)
             </p>
           </div>
         </div>

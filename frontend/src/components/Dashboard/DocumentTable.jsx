@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 export default function DocumentTable({ initialFilter }) {
   const navigate = useNavigate();
-  const { user, isAdmin } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState(null);
@@ -53,7 +51,7 @@ export default function DocumentTable({ initialFilter }) {
       const response = await api.get(`/dashboard/documents?${params}`);
       setDocuments(response.data.documents);
       setPagination(prev => ({ ...prev, ...response.data.pagination }));
-    } catch (error) {
+    } catch {
       toast.error('Failed to load documents');
     } finally {
       setLoading(false);
@@ -121,6 +119,7 @@ export default function DocumentTable({ initialFilter }) {
               <option value="PENDING">Pending</option>
               <option value="APPROVED">Approved</option>
               <option value="REJECTED">Rejected</option>
+              <option value="CANCELLED">Cancelled</option>
             </select>
           </div>
           <div className="form-group">

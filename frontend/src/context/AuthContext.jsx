@@ -3,6 +3,7 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -12,70 +13,50 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    console.log('AuthProvider init - Token exists:', !!token);
-    console.log('AuthProvider init - Stored user:', storedUser);
-    
-    if (token && storedUser) {
-      setUser(JSON.parse(storedUser));
-      // Verify token
-      api.get('/auth/me').catch(() => {
-        console.log('Token invalid, logging out');
-        logout();
-      });
-    }
-    setLoading(false);
-  }, []);
-
-  const login = async (email, password) => {
-    console.log('Login function called with:', { email, password: '***' });
-    
+  // Hydrate from localStorage during the initial render so we don't need
+  // an effect that immediately calls setUser (which React 19 flags).
+  const [user, setUser] = useState(() => {
     try {
-      const response = await api.post('/auth/login', { email, password });
-      console.log('Login response:', response.data);
-      
-      const { token, user } = response.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
-      
-      return response.data;
-    } catch (error) {
-      console.error('Login API error:', error.response?.data || error.message);
-      throw error;
+      const stored = localStorage.getItem('user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
     }
-  };
-
-  const register = async (userData) => {
-    console.log('Register function called with:', userData);
-    
-    try {
-      const response = await api.post('/auth/register', userData);
-      console.log('Register response:', response.data);
-      
-      const { token, user } = response.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
-      
-      return response.data;
-    } catch (error) {
-      console.error('Register API error:', error.response?.data || error.message);
-      throw error;
-    }
-  };
+  });
+  const [loading] = useState(false);
 
   const logout = () => {
-    console.log('Logging out');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
+  };
+
+  // Verify the stored token in the background; if it's invalid, log out.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token && user) {
+      api.get('/auth/me').catch(() => logout());
+    }
+    // Only re-run if the token changes (mount only in practice).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const login = async (email, password) => {
+    const response = await api.post('/auth/login', { email, password });
+    const { token, user: userData } = response.data;
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+    return response.data;
+  };
+
+  const register = async (userData) => {
+    const response = await api.post('/auth/register', userData);
+    const { token, user: newUser } = response.data;
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(newUser));
+    setUser(newUser);
+    return response.data;
   };
 
   const isAdmin = () => {

@@ -24,12 +24,9 @@ export default function WorkflowForm() {
 
   const loadUsers = async () => {
     try {
-      // Use the userService instead of direct fetch
       const data = await userService.getAll();
       setUsers(data);
-      console.log('Users loaded:', data);
-    } catch (error) {
-      console.error('Failed to load users:', error);
+    } catch {
       toast.error('Failed to load users');
     }
   };
@@ -45,7 +42,7 @@ export default function WorkflowForm() {
           order: step.order
         }))
       });
-    } catch (error) {
+    } catch {
       toast.error('Failed to load workflow');
       navigate('/workflows');
     }

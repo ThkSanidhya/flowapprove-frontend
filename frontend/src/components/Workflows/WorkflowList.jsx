@@ -15,7 +15,7 @@ export default function WorkflowList() {
     try {
       const data = await workflowService.getAll();
       setWorkflows(data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load workflows');
     } finally {
       setLoading(false);
@@ -28,7 +28,7 @@ export default function WorkflowList() {
         await workflowService.delete(id);
         toast.success('Workflow deleted successfully');
         loadWorkflows();
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete workflow');
       }
     }

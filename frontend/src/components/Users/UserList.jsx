@@ -24,7 +24,7 @@ export default function UserList() {
     try {
       const data = await userService.getAll();
       setUsers(data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load users');
     } finally {
       setLoading(false);
@@ -132,7 +132,7 @@ export default function UserList() {
                     {user.role}
                   </span>
                 </td>
-                <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                <td>{user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '—'}</td>
                 <td>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={() => handleEdit(user)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}>

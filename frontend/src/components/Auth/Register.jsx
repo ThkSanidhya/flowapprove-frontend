@@ -18,20 +18,16 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Convert organizationName to organization_name for Django backend
-      const registerData = {
+      await register({
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        organization_name: formData.organizationName  // This is the change
-      };
-      
-      await register(registerData);
+        organization_name: formData.organizationName,
+      });
       toast.success('Registration successful!');
       navigate('/dashboard');
-    } catch (error) {
-      console.error('Registration error:', error.response?.data);
-      toast.error(error.response?.data?.error || 'Registration failed');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Registration failed');
     } finally {
       setLoading(false);
     }
