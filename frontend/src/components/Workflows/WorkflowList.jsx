@@ -63,9 +63,9 @@ export default function WorkflowList() {
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>
                   Steps: {workflow.steps?.length || 0}
                 </p>
-                {workflow.steps?.map((step, index) => (
+                {workflow.steps?.map((step) => (
                   <div key={step.id} style={{ fontSize: '12px', marginTop: '5px', padding: '5px', background: '#f5f5f5', borderRadius: '3px' }}>
-                    Step {step.order}: {step.user?.name || `User ${step.userId}`}
+                    Step {step.order}: {step.user_name || step.user?.name || `User ${step.user}`}
                   </div>
                 ))}
               </div>
